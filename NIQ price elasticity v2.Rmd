@@ -1,0 +1,2313 @@
+---
+title: "NIQ elasticity"
+author: "Tazman Davies"
+date: "30/06/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Around 3 minutes to run this entire document.
+
+
+# MAJOR CATEGORIES
+Around 44 seconds, can ignore error.
+
+```{r major1}
+
+# import required libraries
+library(readxl)
+library(writexl)
+library(micEconAids)
+library(ggplot2)
+library("dplyr") 
+library(reshape)
+library(data.table)
+library(openxlsx)
+
+install.packages("micEcon")
+
+
+# import dataset
+df_all <- as.data.frame(read_excel("df_agg_June.xlsx"))
+
+# clean column names
+colnames(df_all) <- gsub(",", "", colnames(df_all))       # Remove commas
+colnames(df_all) <- gsub(" ", "_", colnames(df_all))      # Replace spaces with underscores
+colnames(df_all) <- gsub("-", "_", colnames(df_all))
+
+
+# create dummy variables for YEAR and REGION
+df_all$YEAR <- as.factor(df_all$YEAR)
+df_all$REGION_2 <- as.factor(df_all$REGION_2)
+year_dummies <- model.matrix(~ YEAR - 1, data = df_all)
+region_dummies <- model.matrix(~ REGION_2 - 1, data = df_all)
+df_all <- cbind(df_all, year_dummies, region_dummies)
+
+
+# create model to predict expenditure
+df_all$'log_income_all_squared' <- (log(df_all$'INCOME_VAL'))^2
+model1 <- lm(log(TOT_EXP) ~ 
+               
+               # PRICE INFO
+               log(Biscuits_cakes_and_desserts_FPI) 
+             + log(Dairy_products_and_alternatives_FPI) 
+             + log(Fruit_FPI)
+             + log(Grains_FPI)
+             + log(Meat_and_alternatives_FPI)
+             + log(Non_alcoholic_beverages_FPI)
+             + log(Other_FPI)
+             + log(Confectionery_and_snacks_FPI)
+             + log(Vegetables_FPI)
+             
+             # INCOME
+             + log(INCOME_VAL)
+             + log_income_all_squared
+             
+               # HOUSEHOLD SIZE
+             + log(HH_SZ)
+             
+              # YEAR
+             + YEAR2016
+             + YEAR2017
+             + YEAR2018
+             + YEAR2019
+             
+             # REGION
+             + REGION_2ADE
+             + REGION_2BRI
+             + REGION_2MEL
+             + REGION_2Other
+             + REGION_2PER
+             
+             , data = df_all)
+
+df_all$predicted <- exp(predict(model1, newdata = df_all))
+
+# define price names
+priceNames <-c("Biscuits_cakes_and_desserts_FPI",
+"Dairy_products_and_alternatives_FPI",
+"Fruit_FPI",
+"Grains_FPI",
+"Meat_and_alternatives_FPI",
+"Non_alcoholic_beverages_FPI",
+"Other_FPI",                          
+"Confectionery_and_snacks_FPI",       
+"Vegetables_FPI" 
+                  )
+
+# define share names
+shareNames <-c("Biscuits_cakes_and_desserts_SHARE",
+"Dairy_products_and_alternatives_SHARE",
+"Fruit_SHARE",
+"Grains_SHARE",
+"Meat_and_alternatives_SHARE",
+"Non_alcoholic_beverages_SHARE",
+"Other_SHARE",                          
+"Confectionery_and_snacks_SHARE",       
+"Vegetables_SHARE" 
+                  )                                                                                                                                                                                                                                                                                                                                                   
+
+# estimate elasticities
+aidsResult_all <- aidsEst( priceNames, shareNames, "predicted", data = df_all, method = "LA", priceIndex = 'S', shifterNames = c("HH_SZ", "YEAR2016", "YEAR2017", "YEAR2018","YEAR2019", "REGION_2ADE", "REGION_2BRI", "REGION_2MEL", "REGION_2Other", "REGION_2PER"),
+                           hom=TRUE, sym=TRUE, pxBase = 1)
+
+pMeans_all <- colMeans( df_all[ , priceNames ], na.rm=T )
+wMeans_all <- colMeans( df_all[ , shareNames ], na.rm=T )
+aidsResultElasCov_all <- aidsElas( coef( aidsResult_all ), prices = pMeans_all, shares = wMeans_all, coefCov = vcov( aidsResult_all), df = df.residual( aidsResult_all ), shifterValues = c(1, 0, 0, 0, 1, 0, 0, 1, 0, 0))
+
+# display results in table
+n_categories <- length(shareNames)
+tab_all <- data.frame(matrix(nrow = n_categories, ncol = 0))
+tab_all$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_all$pe <- diag(as.matrix(aidsResultElasCov_all$marshall))
+tab_all$se <- diag(as.matrix(aidsResultElasCov_all$marshallStEr))
+tab_all$lowerCI <- tab_all$pe - tab_all$pe * tab_all$se * qnorm(0.975)
+tab_all$higherCI <- tab_all$pe + tab_all$pe * tab_all$se * qnorm(0.975)
+setorder(tab_all,pe)
+
+tab_all$label <- paste(as.character(format(round(tab_all$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all$lowerCI, 2), nsmall=2)), ')', sep = '')
+
+
+
+tab_all
+
+
+#cor(df_all$TOT_EXP, df_all$predicted)
+
+
+#checkConsist(aidsResult_all)
+#Checking theoretical consistency of an Linear Approximate Almost Ideal Demand System (LA-AIDS):
+#The adding-up condition is fulfilled
+#The homogeneity condition is fulfilled
+#The symmetry condition is fulfilled
+#Monotonicity is fulfilled at 36208 out of 36208 observations (100%)
+
+summary(model1)
+
+```
+
+
+```{r minor1}
+
+# import required libraries
+
+# import dataset
+df_all2 <- as.data.frame(read_excel("df_agg_minor_June.xlsx"))
+
+# clean column names
+colnames(df_all2) <- gsub(",", "", colnames(df_all2))       # Remove commas
+colnames(df_all2) <- gsub(" ", "_", colnames(df_all2))      # Replace spaces with underscores
+colnames(df_all2) <- gsub("-", "_", colnames(df_all2))
+colnames(df_all2) <- gsub("/", "_", colnames(df_all2))
+
+# create dummy variables for YEAR and REGION
+df_all2$YEAR <- as.factor(df_all2$YEAR)
+df_all2$REGION_2 <- as.factor(df_all2$REGION_2)
+year_dummies <- model.matrix(~ YEAR - 1, data = df_all2)
+region_dummies <- model.matrix(~ REGION_2 - 1, data = df_all2)
+df_all2 <- cbind(df_all2, year_dummies, region_dummies)
+
+
+# create model to predict expenditure
+df_all2$'log_income_all_squared' <- (log(df_all2$'INCOME_VAL'))^2
+model1 <- lm(log(TOT_EXP) ~ 
+               
+               # PRICE INFO
+             #  log(Biscuits_cakes_and_desserts_FPI) 
+             log(Bread_FPI) 
+             + log(Breakfast_cereals_FPI) 
+             + log(Pasta_rice_and_other_cereals_FPI) 
+             
+             
+             + log(Dairy_products_and_alternatives_FPI) 
+             + log(Fruit_FPI)
+             + log(Grains_FPI)
+             + log(Meat_and_alternatives_FPI)
+             + log(Non_alcoholic_beverages_FPI)
+             + log(Other_FPI)
+             + log(Confectionery_and_snacks_FPI)
+             + log(Vegetables_FPI)
+             
+             # INCOME
+             + log(INCOME_VAL)
+             + log_income_all_squared
+             
+               # HOUSEHOLD SIZE
+             + log(HH_SZ)
+             
+              # YEAR
+             + YEAR2016
+             + YEAR2017
+             + YEAR2018
+             + YEAR2019
+             
+             # REGION
+             + REGION_2ADE
+             + REGION_2BRI
+             + REGION_2MEL
+             + REGION_2Other
+             + REGION_2PER
+             
+             , data = df_all2)
+
+df_all2$predicted <- exp(predict(model1, newdata = df_all2))
+
+# define price names
+priceNames <-c(#"Biscuits_cakes_and_desserts_FPI",
+"Bread_FPI",
+"Breakfast_cereals_FPI",
+"Pasta_rice_and_other_cereals_FPI",
+             
+  
+"Dairy_products_and_alternatives_FPI",
+"Fruit_FPI",
+"Grains_FPI",
+"Meat_and_alternatives_FPI",
+"Non_alcoholic_beverages_FPI",
+"Other_FPI",                          
+"Confectionery_and_snacks_FPI",       
+"Vegetables_FPI" 
+                  )
+
+# define share names
+shareNames <-c(#"Biscuits_cakes_and_desserts_SHARE",
+  "Bread_SHARE",
+"Breakfast_cereals_SHARE",
+"Pasta_rice_and_other_cereals_SHARE",
+
+"Dairy_products_and_alternatives_SHARE",
+"Fruit_SHARE",
+"Grains_SHARE",
+"Meat_and_alternatives_SHARE",
+"Non_alcoholic_beverages_SHARE",
+"Other_SHARE",                          
+"Confectionery_and_snacks_SHARE",       
+"Vegetables_SHARE" 
+                  )                                                                                                                                                                                                                                                                                                                                                   
+
+# estimate elasticities
+aidsResult_all <- aidsEst( priceNames, shareNames, "predicted", data = df_all2, method = "LA", priceIndex = 'S', shifterNames = c("HH_SZ", "YEAR2016", "YEAR2017", "YEAR2018","YEAR2019", "REGION_2ADE", "REGION_2BRI", "REGION_2MEL", "REGION_2Other", "REGION_2PER"),
+                           hom=TRUE, sym=TRUE, pxBase = 1)
+
+pMeans_all <- colMeans( df_all2[ , priceNames ], na.rm=T )
+wMeans_all <- colMeans( df_all2[ , shareNames ], na.rm=T )
+aidsResultElasCov_all <- aidsElas( coef( aidsResult_all ), prices = pMeans_all, shares = wMeans_all, coefCov = vcov( aidsResult_all), df = df.residual( aidsResult_all ), shifterValues = c(1, 0, 0, 0, 1, 0, 0, 1, 0, 0))
+
+# display results in table
+n_categories <- length(shareNames)
+tab_all <- data.frame(matrix(nrow = n_categories, ncol = 0))
+tab_all$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_all$pe <- diag(as.matrix(aidsResultElasCov_all$marshall))
+tab_all$se <- diag(as.matrix(aidsResultElasCov_all$marshallStEr))
+tab_all$lowerCI <- tab_all$pe - tab_all$pe * tab_all$se * qnorm(0.975)
+tab_all$higherCI <- tab_all$pe + tab_all$pe * tab_all$se * qnorm(0.975)
+setorder(tab_all,pe)
+
+tab_all$label <- paste(as.character(format(round(tab_all$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all$lowerCI, 2), nsmall=2)), ')', sep = '')
+
+
+
+
+```
+
+
+
+
+
+
+
+# MINOR CATEGORIES - meat and meat alternatives
+
+
+```{r minor1}
+
+# import dataset
+df_all_minor <- as.data.frame(read_excel("df_agg_Sep_minor.xlsx"))
+
+## create dataframe for group a
+df_all_minor_a <- df_all_minor
+
+# price names
+priceNames_a <-c('Red meat PRICE',
+ 'Processed meat PRICE',
+ 'Poultry PRICE',
+ 'Fish and seafoods PRICE',
+ 'Eggs PRICE',
+ 'Nuts and seeds PRICE',
+ 'Legumes/beans PRICE'
+)
+
+# share names
+shareNames_a <-c('Red meat SHARE',
+ 'Processed meat SHARE',
+ 'Poultry SHARE',
+ 'Fish and seafoods SHARE',
+ 'Eggs SHARE',
+ 'Nuts and seeds SHARE',
+ 'Legumes/beans SHARE'
+)
+
+## find row sums
+row_sums_a <- rowSums(df_all_minor_a[c(shareNames_a)])
+
+## change tot expenditure
+df_all_minor_a$"TOT EXP" <- row_sums_a*df_all_minor_a$"TOT EXP"
+
+
+## change shares
+  for (variable in shareNames_a) {
+  df_all_minor_a[[variable]] <- df_all_minor_a[[variable]]/row_sums_a
+}
+
+## drop observations with zero expenditure in all categories
+df_all_minor_a <- subset(df_all_minor_a, row_sums_a >0) # drops 5 observations
+
+
+
+# estimate elasticities - only apply to relevant df_all_minor dataframe
+aidsResult_all_a <- aidsEst( priceNames_a, shareNames_a, "TOT EXP", data = df_all_minor_a, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+pMeans_all_a <- colMeans( df_all_minor_a[ , priceNames_a ], na.rm=T )
+wMeans_all_a <- colMeans( df_all_minor_a[ , shareNames_a ], na.rm=T )
+aidsResultElasCov_all_a <- aidsElas( coef( aidsResult_all_a ), prices = pMeans_all_a, shares = wMeans_all_a, coefCov = vcov( aidsResult_all_a), df = df.residual( aidsResult_all_a ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_a <- length(shareNames_a)
+tab_all_a <- data.frame(matrix(nrow = n_categories_a, ncol = 0))
+tab_all_a$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_all_a$pe <- diag(as.matrix(aidsResultElasCov_all_a$marshall))
+tab_all_a$se <- diag(as.matrix(aidsResultElasCov_all_a$marshallStEr))
+tab_all_a$lowerCI <- tab_all_a$pe - tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+tab_all_a$higherCI <- tab_all_a$pe + tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+setorder(tab_all_a,pe)
+tab_all_a$label <- paste(as.character(format(round(tab_all_a$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_a$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_a$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_a <- arrange(tab_all_a, pe)
+tab_all_a$order <- seq(1, length(shareNames_a)) 
+
+# table - extract marshallian price elasticities
+tab_pe_a <- round(as.data.frame(aidsResultElasCov_all_a$marshall), 2)
+colnames(tab_pe_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_melt_a <- melt(setDT(tab_pe_a), id = "share")
+tab_pe_melt_a <- tab_pe_melt_a[tab_pe_melt_a$share != tab_pe_melt_a$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallStEr), 2)
+colnames(tab_se_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_melt_a <- melt(setDT(tab_se_a), id = "share")
+tab_se_melt_a <- tab_se_melt_a[tab_se_melt_a$share != tab_se_melt_a$variable,]
+
+# table - p values
+tab_p_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallPval), 4)
+colnames(tab_p_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_melt_a <- melt(setDT(tab_p_a), id = "share")
+tab_p_melt_a <- tab_p_melt_a[tab_p_melt_a$share != tab_p_melt_a$variable,]
+tab_p_melt_a$value[tab_p_melt_a$value < 0.05] <- '*'
+tab_p_melt_a$value[tab_p_melt_a$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_a$label <- paste(as.character(format(tab_pe_melt_a$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_a$value, nsmall=2)), ')', tab_p_melt_a$value, sep = '')
+
+
+tab_pe_melt_a_input <- tab_pe_melt_a
+tab_pe_melt_a_input$pe <- tab_pe_melt_a$value
+tab_pe_melt_a_input$se <- tab_se_melt_a$value
+write.xlsx(tab_pe_melt_a_input, 'tab_pe_melt_a_input.xlsx')
+
+
+# re-ordering
+tab_pe_melt_a$order <- ''
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Red meat", 1, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Poultry", 2, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Processed meat", 3, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Fish and seafoods", 4, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Eggs", 5, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Nuts and seeds", 6, tab_pe_melt_a$order)
+tab_pe_melt_a$order <-  ifelse(tab_pe_melt_a$share == "Legumes/beans", 7, tab_pe_melt_a$order)
+
+
+```
+
+# MINOR CATEGORIES - grains and dairy
+
+
+```{r minor2}
+
+## create dataframe for group a
+df_all_minor_b <- df_all_minor
+
+
+# share names
+priceNames_b <-c('Bread PRICE',
+ 'Breakfast cereals PRICE',
+ 'Pasta, rice, and other cereals PRICE',
+ 'Milk PRICE',
+ 'Cheese and cream PRICE',
+ 'Yoghurt PRICE',
+ 'Ice-cream PRICE'
+)
+
+
+# price names
+shareNames_b <-c('Bread SHARE',
+ 'Breakfast cereals SHARE',
+ 'Pasta, rice, and other cereals SHARE',
+ 'Milk SHARE',
+ 'Cheese and cream SHARE',
+ 'Yoghurt SHARE',
+ 'Ice-cream SHARE'
+)
+
+
+
+## find row sums
+row_sums_b <- rowSums(df_all_minor_b[c(shareNames_b)])
+
+## change tot expenditure
+df_all_minor_b$"TOT EXP" <- row_sums_b*df_all_minor_b$"TOT EXP"
+
+
+## change shares
+  for (variable in shareNames_b) {
+  df_all_minor_b[[variable]] <- df_all_minor_b[[variable]]/row_sums_b
+}
+
+## drop observations with zero expenditure in all categories
+df_all_minor_b <- subset(df_all_minor_b, row_sums_b >0) # drops 0 observations
+
+
+# estimate elasticities
+aidsResult_all_b <- aidsEst( priceNames_b, shareNames_b, "TOT EXP", data = df_all_minor_b, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_b <- colMeans( df_all_minor_b[ , priceNames_b ], na.rm=T )
+wMeans_all_b <- colMeans( df_all_minor_b[ , shareNames_b ], na.rm=T )
+aidsResultElasCov_all_b <- aidsElas( coef( aidsResult_all_b ), prices = pMeans_all_b, shares = wMeans_all_b, coefCov = vcov( aidsResult_all_b), df = df.residual( aidsResult_all_b ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_b <- length(shareNames_b)
+tab_all_b <- data.frame(matrix(nrow = n_categories_b, ncol = 0))
+tab_all_b$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_all_b$pe <- diag(as.matrix(aidsResultElasCov_all_b$marshall))
+tab_all_b$se <- diag(as.matrix(aidsResultElasCov_all_b$marshallStEr))
+tab_all_b$lowerCI <- tab_all_b$pe - tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+tab_all_b$higherCI <- tab_all_b$pe + tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+setorder(tab_all_b,pe)
+tab_all_b$label <- paste(as.character(format(round(tab_all_b$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_b$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_b$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_b <- arrange(tab_all_b, pe)
+tab_all_b$order <- seq(1, length(shareNames_b)) 
+
+# table - extract marshallian price elasticities
+tab_pe_b <- round(as.data.frame(aidsResultElasCov_all_b$marshall), 2)
+colnames(tab_pe_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_melt_b <- melt(setDT(tab_pe_b), id = "share")
+tab_pe_melt_b <- tab_pe_melt_b[tab_pe_melt_b$share != tab_pe_melt_b$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallStEr), 2)
+colnames(tab_se_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_melt_b <- melt(setDT(tab_se_b), id = "share")
+tab_se_melt_b <- tab_se_melt_b[tab_se_melt_b$share != tab_se_melt_b$variable,]
+
+# table - p values
+tab_p_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallPval), 4)
+colnames(tab_p_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_melt_b <- melt(setDT(tab_p_b), id = "share")
+tab_p_melt_b <- tab_p_melt_b[tab_p_melt_b$share != tab_p_melt_b$variable,]
+tab_p_melt_b$value[tab_p_melt_b$value < 0.05] <- '*'
+tab_p_melt_b$value[tab_p_melt_b$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_b$label <- paste(as.character(format(tab_pe_melt_b$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_b$value, nsmall=2)), ')', tab_p_melt_b$value, sep = '')
+
+
+tab_pe_melt_b_input <- tab_pe_melt_b
+tab_pe_melt_b_input$pe <- tab_pe_melt_b$value
+tab_pe_melt_b_input$se <- tab_se_melt_b$value
+write.xlsx(tab_pe_melt_b_input, 'tab_pe_melt_b_input.xlsx')
+
+# re-ordering
+tab_pe_melt_b$order <- ''
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Bread", 1, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Breakfast cereals", 2, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Pasta, rice, and other cereals", 3, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Milk", 4, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Cheese and cream", 5, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Yoghurt", 6, tab_pe_melt_b$order)
+tab_pe_melt_b$order <-  ifelse(tab_pe_melt_b$share == "Ice-cream", 7, tab_pe_melt_b$order)
+
+
+
+```
+
+
+
+
+
+
+# MINOR CATEGORIES - discretionary
+
+
+```{r minor3}
+
+df_all_minor_c <- df_all_minor
+
+# share names
+priceNames_c <-c('Biscuits PRICE',
+ 'Cakes, muffins, and pastries PRICE',
+ 'Desserts PRICE',
+ "Chocolate-based confectionery PRICE",
+"Sugar-based confectionery PRICE",
+"Snackfoods PRICE",
+'Non-sugar sweetened beverages PRICE',
+'Sugar-sweetened beverages PRICE',
+ 'Tea and coffee PRICE'
+)
+
+
+# price names
+shareNames_c <-c('Biscuits SHARE',
+ 'Cakes, muffins, and pastries SHARE',
+ 'Desserts SHARE',
+"Chocolate-based confectionery SHARE",
+ "Sugar-based confectionery SHARE",
+ "Snackfoods SHARE",
+'Non-sugar sweetened beverages SHARE',
+ 'Sugar-sweetened beverages SHARE',
+ 'Tea and coffee SHARE'
+)
+
+## find row sums
+row_sums_c <- rowSums(df_all_minor_c[c(shareNames_c)])
+
+## change tot expenditure
+df_all_minor_c$"TOT EXP" <- row_sums_c*df_all_minor_c$"TOT EXP"
+
+
+## change shares
+  for (variable in shareNames_c) {
+  df_all_minor_c[[variable]] <- df_all_minor_c[[variable]]/row_sums_c
+}
+
+## drop observations with zero expenditure in all categories
+df_all_minor_c <- subset(df_all_minor_c, row_sums_c >0) # drops 0 observations
+
+
+
+# estimate elasticities
+aidsResult_all_c <- aidsEst( priceNames_c, shareNames_c, "TOT EXP", data = df_all_minor_c, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_c <- colMeans( df_all_minor_c[ , priceNames_c ], na.rm=T )
+wMeans_all_c <- colMeans( df_all_minor_c[ , shareNames_c ], na.rm=T )
+aidsResultElasCov_all_c <- aidsElas( coef( aidsResult_all_c ), prices = pMeans_all_c, shares = wMeans_all_c, coefCov = vcov( aidsResult_all_c), df = df.residual( aidsResult_all_c ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_c <- length(shareNames_c)
+tab_all_c <- data.frame(matrix(nrow = n_categories_c, ncol = 0))
+tab_all_c$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_all_c$pe <- diag(as.matrix(aidsResultElasCov_all_c$marshall))
+tab_all_c$se <- diag(as.matrix(aidsResultElasCov_all_c$marshallStEr))
+tab_all_c$lowerCI <- tab_all_c$pe - tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+tab_all_c$higherCI <- tab_all_c$pe + tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+setorder(tab_all_c,pe)
+tab_all_c$label <- paste(as.character(format(round(tab_all_c$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_c$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_c$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_c <- arrange(tab_all_c, pe)
+tab_all_c$order <- seq(1, length(shareNames_c)) 
+
+# table - extract marshallian price elasticities
+tab_pe_c <- round(as.data.frame(aidsResultElasCov_all_c$marshall), 2)
+colnames(tab_pe_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_melt_c <- melt(setDT(tab_pe_c), id = "share")
+tab_pe_melt_c <- tab_pe_melt_c[tab_pe_melt_c$share != tab_pe_melt_c$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallStEr), 2)
+colnames(tab_se_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_melt_c <- melt(setDT(tab_se_c), id = "share")
+tab_se_melt_c <- tab_se_melt_c[tab_se_melt_c$share != tab_se_melt_c$variable,]
+
+# table - p values
+tab_p_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallPval), 4)
+colnames(tab_p_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_melt_c <- melt(setDT(tab_p_c), id = "share")
+tab_p_melt_c <- tab_p_melt_c[tab_p_melt_c$share != tab_p_melt_c$variable,]
+tab_p_melt_c$value[tab_p_melt_c$value < 0.05] <- '*'
+tab_p_melt_c$value[tab_p_melt_c$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_c$label <- paste(as.character(format(tab_pe_melt_c$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_c$value, nsmall=2)), ')', tab_p_melt_c$value, sep = '')
+
+
+
+tab_pe_melt_c_input <- tab_pe_melt_c
+tab_pe_melt_c_input$pe <- tab_pe_melt_c$value
+tab_pe_melt_c_input$se <- tab_se_melt_c$value
+write.xlsx(tab_pe_melt_c_input, 'tab_pe_melt_c_input.xlsx')
+
+
+# re-ordering
+tab_pe_melt_c$order <- ''
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Biscuits", 1, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Cakes, muffins, and pastries", 2, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Desserts", 3, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Chocolate-based confectionery", 4, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Sugar-based confectionery", 5, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Snackfoods", 6, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Sugar-sweetened beverages", 7, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Non-sugar sweetened beverages", 8, tab_pe_melt_c$order)
+tab_pe_melt_c$order <-  ifelse(tab_pe_melt_c$share == "Tea and coffee", 9, tab_pe_melt_c$order)
+
+
+
+```
+
+
+
+# MINOR CATEGORIES - other
+
+
+```{r minor4}
+
+df_all_minor_d <- df_all_minor
+
+# share names
+priceNames_d <-c('Fats and oils PRICE',
+ 'Sugars, honey, and related products PRICE',
+ 'Sauces, dressings, spreads, and dips PRICE',
+ 'Ready meals PRICE'
+)
+
+
+# price names
+shareNames_d <-c('Fats and oils SHARE',
+ 'Sugars, honey, and related products SHARE',
+ 'Sauces, dressings, spreads, and dips SHARE',
+ 'Ready meals SHARE'
+)
+
+## find row sums
+row_sums_d <- rowSums(df_all_minor_d[c(shareNames_d)])
+
+## change tot expenditure
+df_all_minor_d$"TOT EXP" <- row_sums_d*df_all_minor_d$"TOT EXP"
+
+
+## change shares
+  for (variable in shareNames_d) {
+  df_all_minor_d[[variable]] <- df_all_minor_d[[variable]]/row_sums_d
+}
+
+## drop observations with zero expenditure in all categories
+df_all_minor_d <- subset(df_all_minor_d, row_sums_d >0) # drops 5 observations
+
+
+
+# estimate elasticities
+aidsResult_all_d <- aidsEst( priceNames_d, shareNames_d, "TOT EXP", data = df_all_minor_d, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_d <- colMeans( df_all_minor_d[ , priceNames_d ], na.rm=T )
+wMeans_all_d <- colMeans( df_all_minor_d[ , shareNames_d ], na.rm=T )
+aidsResultElasCov_all_d <- aidsElas( coef( aidsResult_all_d ), prices = pMeans_all_d, shares = wMeans_all_d, coefCov = vcov( aidsResult_all_d), df = df.residual( aidsResult_all_d ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_d <- length(shareNames_d)
+tab_all_d <- data.frame(matrix(nrow = n_categories_d, ncol = 0))
+tab_all_d$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_all_d$pe <- diag(as.matrix(aidsResultElasCov_all_d$marshall))
+tab_all_d$se <- diag(as.matrix(aidsResultElasCov_all_d$marshallStEr))
+tab_all_d$lowerCI <- tab_all_d$pe - tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+tab_all_d$higherCI <- tab_all_d$pe + tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+setorder(tab_all_d,pe)
+tab_all_d$label <- paste(as.character(format(round(tab_all_d$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_d$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_d$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_d <- arrange(tab_all_d, pe)
+tab_all_d$order <- seq(1, length(shareNames_d)) 
+
+# table - extract marshallian price elasticities
+tab_pe_d <- round(as.data.frame(aidsResultElasCov_all_d$marshall), 2)
+colnames(tab_pe_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_melt_d <- melt(setDT(tab_pe_d), id = "share")
+tab_pe_melt_d <- tab_pe_melt_d[tab_pe_melt_d$share != tab_pe_melt_d$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallStEr), 2)
+colnames(tab_se_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_melt_d <- melt(setDT(tab_se_d), id = "share")
+tab_se_melt_d <- tab_se_melt_d[tab_se_melt_d$share != tab_se_melt_d$variable,]
+
+# table - p values
+tab_p_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallPval), 4)
+colnames(tab_p_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_melt_d <- melt(setDT(tab_p_d), id = "share")
+tab_p_melt_d <- tab_p_melt_d[tab_p_melt_d$share != tab_p_melt_d$variable,]
+tab_p_melt_d$value[tab_p_melt_d$value < 0.05] <- '*'
+tab_p_melt_d$value[tab_p_melt_d$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_d$label <- paste(as.character(format(tab_pe_melt_d$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_d$value, nsmall=2)), ')', tab_p_melt_d$value, sep = '')
+
+tab_pe_melt_d_input <- tab_pe_melt_d
+tab_pe_melt_d_input$pe <- tab_pe_melt_d$value
+tab_pe_melt_d_input$se <- tab_se_melt_d$value
+write.xlsx(tab_pe_melt_d_input, 'tab_pe_melt_d_input.xlsx')
+
+
+# re-ordering
+tab_pe_melt_d$order <- ''
+tab_pe_melt_d$order <-  ifelse(tab_pe_melt_d$share == "Fats and oils", 1, tab_pe_melt_d$order)
+tab_pe_melt_d$order <-  ifelse(tab_pe_melt_d$share == "Sugars, honey, and related products", 2, tab_pe_melt_d$order)
+tab_pe_melt_d$order <-  ifelse(tab_pe_melt_d$share == "Sauces, dressings, spreads, and dips", 3, tab_pe_melt_d$order)
+tab_pe_melt_d$order <-  ifelse(tab_pe_melt_d$share == "Ready meals", 4, tab_pe_melt_d$order)
+
+
+
+```
+
+
+
+
+# FIGURE 1
+
+
+```{r fig1}
+
+# combine major and minor own-price elasticity results
+tab_all_2 <- rbind(tab_all, 
+                 tab_all_a[1: ncol(tab_all_a)-1 ],
+                 tab_all_b[1: ncol(tab_all_b)-1 ],
+                 tab_all_c[1: ncol(tab_all_c)-1 ],
+                 tab_all_d[1: ncol(tab_all_d)-1 ]) 
+
+
+# set order
+tab_all_2$order <- ''
+tab_all_2$order <-  ifelse(tab_all_2$category == "Vegetables", 10, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fruit", 20, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Meat and alternatives", 30, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Red meat", 31, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Poultry", 32, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Processed meat", 33, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fish and seafoods", 34, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Eggs", 35, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Nuts and seeds", 36, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Legumes/beans", 37, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Grains", 40, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Bread", 41, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Breakfast cereals", 42, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Pasta, rice, and other cereals", 43, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Dairy products and alternatives", 50, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Milk", 51, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Yoghurt", 52, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cheese and cream", 53, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ice-cream", 54, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits, cakes, and desserts", 60, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits", 61, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cakes, muffins, and pastries", 62, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Desserts", 63, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Confectionery and snacks", 70, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Chocolate-based confectionery", 71, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-based confectionery", 72, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Snackfoods", 73, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-alcoholic beverages", 80, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-sweetened beverages", 81, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-sugar sweetened beverages", 82, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Tea and coffee", 83, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Other", 90, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fats and oils", 91, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugars, honey, and related products", 92, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sauces, dressings, spreads, and dips", 93, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ready meals", 94, tab_all_2$order)
+
+# write list of categories
+all_cats <- c("Vegetables", "Fruit", "Meat and alternatives", "Legumes/beans", 
+              "Nuts and seeds", "Processed meat", "Poultry", "Eggs", "Red meat",
+              "Fish and seafoods", "Grains", "Bread", "Breakfast cereals","Pasta, rice, and other cereals",
+              "Dairy products and alternatives", "Ice-cream", "Yoghurt", "Cheese and cream",
+              "Milk", "Biscuits, cakes, and desserts", "Desserts", "Biscuits", "Cakes, muffins, and pastries",
+              "Confectionery and snacks", "Chocolate-based confectionery", "Sugar-based confectionery",
+              "Snackfoods", "Non-alcoholic beverages", "Tea and coffee", "Non-sugar sweetened beverages", "Sugar-sweetened beverages",
+              "Other", "Ready meals", "Sauces, dressings, spreads, and dips", "Sugars, honey, and related products", "Fats and oils")
+
+# set colours for major and minor categories
+tab_all_2$Level <- "steelblue1"
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Vegetables", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Fruit", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Grains", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Meat and alternatives", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Dairy products and alternatives", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Non-alcoholic beverages", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Confectionery and snacks", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Biscuits, cakes, and desserts", "steelblue", tab_all_2$Level)
+tab_all_2$Level <-  ifelse(tab_all_2$category == "Other", "steelblue", tab_all_2$Level)
+
+
+blank1 <- data.frame(category = "Miss1", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=11, Level="steelblue1")
+blank2 <- data.frame(category = "Miss2", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=21, Level="steelblue1")
+blank3 <- data.frame(category = "Miss3", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=38, Level="steelblue1")
+blank4 <- data.frame(category = "Miss4", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=44, Level="steelblue1")
+blank5 <- data.frame(category = "Miss5", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=55, Level="steelblue1")
+blank6 <- data.frame(category = "Miss6", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=64, Level="steelblue1")
+blank7 <- data.frame(category = "Miss7", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=74, Level="steelblue1")
+blank8 <- data.frame(category = "Miss8", pe = 1, se=3, lowerCI=1, higherCI=1, label=1, order=84, Level="steelblue1")
+
+# include blank rows
+tab_all_3 <- rbind(tab_all_2,
+                 blank1,
+                 blank2,
+                 blank3,
+                 blank4,
+                 blank5,
+                 blank6,
+                 blank7,
+                 blank8
+                 ) 
+
+tab_all_3$order <- as.numeric(tab_all_3$order)
+tab_all_3 <- arrange(tab_all_3, order)
+
+# create figure from table
+fig1 <- ggplot(tab_all_3, aes(x = pe, y = reorder(category, -order), fill = Level)) + geom_col() + 
+  geom_errorbar(aes(xmin = lowerCI, xmax = higherCI), width = 0.2) + 
+  labs(y = '', x = 'Own-Price Elasticity', fontsize = 40) + geom_text(aes(x = higherCI, label=label, nsmall = 2), position=position_dodge(width=0.9), hjust = 1.1, size=3.4) + 
+  xlim(-2.0, 0)  + 
+  theme_bw() + 
+  theme(axis.text.x=element_text(size=12)) +
+  theme(axis.text.y=element_text(size=10)) + 
+  scale_y_discrete(labels = c("Vegetables" = expression(bold("Vegetables")), 
+                                 "Fruit" = expression(bold("Fruit")),
+                                 "Grains" = expression(bold("Grains")),
+                                 "Meat and alternatives" = expression(bold("Meat and alternatives")),
+                                 "Dairy products and alternatives" = expression(bold("Dairy products and alternatives")),
+                                 "Non-alcoholic beverages" = expression(bold("Non-alcoholic beverages")),
+                                 "Confectionery and snacks" = expression(bold("Confectionery and snacks")),
+                                 "Biscuits, cakes, and desserts" = expression(bold("Biscuits, cakes, and desserts")),
+                                 "Other" = expression(bold("Other"))
+                                 ), breaks = all_cats) +
+  scale_fill_manual(values = c("steelblue", "steelblue1"), labels = c("Major category", "Minor category")) 
+
+ggsave("figure_1.png", scale = 1, width = 8.8, height = 7)
+write.xlsx(tab_all_2, 'tab_all_2.xlsx')
+
+fig1
+```
+# FIGURE 2
+CPE - major categories
+
+```{r fig2}
+
+
+tab_pe <- round(as.data.frame(aidsResultElasCov_all$marshall), 2)
+colnames(tab_pe) <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+tab_pe$share <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+
+tab_pe_melt <- melt(setDT(tab_pe), id = "share")
+tab_pe_melt <- tab_pe_melt[tab_pe_melt$share != tab_pe_melt$variable,]
+
+tab_se <- round(as.data.frame(aidsResultElasCov_all$marshallStEr), 2)
+colnames(tab_se) <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+tab_se$share <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+tab_se_melt <- melt(setDT(tab_se), id = "share")
+tab_se_melt <- tab_se_melt[tab_se_melt$share != tab_se_melt$variable,]
+
+tab_p <- round(as.data.frame(aidsResultElasCov_all$marshallPval), 4)
+colnames(tab_p) <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+tab_p$share <- gsub(' FPI', '', gsub('_', ' ', priceNames))
+tab_p_melt <- melt(setDT(tab_p), id = "share")
+tab_p_melt <- tab_p_melt[tab_p_melt$share != tab_p_melt$variable,]
+
+tab_p_melt$value[tab_p_melt$value < 0.05] <- '*'
+tab_p_melt$value[tab_p_melt$value >= 0.05] <- ''
+
+tab_pe_melt$label <- paste(as.character(format(tab_pe_melt$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt$value, nsmall=2)), ')', tab_p_melt$value, sep = '')
+
+tab_pe_melt_input <- tab_pe_melt
+tab_pe_melt_input$pe <- tab_pe_melt$value
+tab_pe_melt_input$se <- tab_se_melt$value
+write.xlsx(tab_pe_melt_input, 'tab_pe_melt_input.xlsx')
+
+# re-ordering
+tab_pe_melt$order <- ''
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Vegetables", 1, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Fruit", 2, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Grains", 3, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Meat and alternatives", 4, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Dairy products and alternatives", 5, tab_pe_melt$order)
+
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Biscuits, cakes, and desserts", 6, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Confectionery and snacks", 7, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Non-alcoholic beverages", 8, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Other", 9, tab_pe_melt$order)
+
+
+
+fig2 <- ggplot(tab_pe_melt, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 14)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=3.3) +theme(axis.text.x=element_text(size=11, face="bold")) +theme(axis.text.y=element_text(size=11, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+fig2
+ggsave("figure_2.png", width = 8, height = 8)
+
+
+
+```
+
+
+
+
+# FIGURE 3
+SES comparison
+
+```{r fig3}
+
+df_low <- subset(df_all, SES == 'low')
+df_middle <- subset(df_all, SES == 'middle')
+df_high <- subset(df_all, SES == 'high')
+
+
+
+priceNames <-c("Biscuits, cakes, and desserts PRICE",
+"Dairy products and alternatives PRICE",
+"Fruit PRICE",
+"Grains PRICE",
+"Meat and alternatives PRICE",
+"Non-alcoholic beverages PRICE",
+"Other PRICE",                          
+"Confectionery and snacks PRICE",       
+"Vegetables PRICE" 
+                  )
+
+# define share names
+shareNames <-c("Biscuits, cakes, and desserts SHARE",
+"Dairy products and alternatives SHARE",
+"Fruit SHARE",
+"Grains SHARE",
+"Meat and alternatives SHARE",
+"Non-alcoholic beverages SHARE",
+"Other SHARE",                          
+"Confectionery and snacks SHARE",       
+"Vegetables SHARE" 
+                  )
+
+
+# LOW SES
+aidsResult_low <- aidsEst( priceNames, shareNames, "TOT EXP", data = df_low, method = "LA", priceIndex = "S", shifterNames = "HH SZ" )
+pMeans_low <- colMeans( df_low[ , priceNames ], na.rm=T )
+wMeans_low <- colMeans( df_low[ , shareNames ], na.rm=T )
+aidsResultElasCov_low <- aidsElas( coef( aidsResult_low ), prices = pMeans_low, shares = wMeans_low, coefCov = vcov( aidsResult_low), df = df.residual( aidsResult_low ), shifterValues = c(1) )
+
+tab_low <- data.frame(matrix(nrow = 9, ncol = 0))
+tab_low$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_low$pe <- diag(as.matrix(aidsResultElasCov_low$marshall))
+tab_low$se <- diag(as.matrix(aidsResultElasCov_low$marshallStEr))
+tab_low$lowerCI <- tab_low$pe - tab_low$pe * tab_low$se * qnorm(0.975)
+tab_low$higherCI <- tab_low$pe + tab_low$pe * tab_low$se * qnorm(0.975)
+tab_low$SES <- 'Low'
+
+
+# MIDDLE SES 
+aidsResult_middle <- aidsEst( priceNames, shareNames, "TOT EXP", data = df_middle, method = "LA", priceIndex = "S", shifterNames = "HH SZ" )
+pMeans_middle <- colMeans( df_middle[ , priceNames ], na.rm=T )
+wMeans_middle <- colMeans( df_middle[ , shareNames ], na.rm=T )
+aidsResultElasCov_middle <- aidsElas( coef( aidsResult_middle ), prices = pMeans_middle, shares = wMeans_middle, coefCov = vcov( aidsResult_middle), df = df.residual( aidsResult_middle ), shifterValues = c(1) )
+
+tab_middle <- data.frame(matrix(nrow = 9, ncol = 0))
+tab_middle$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_middle$pe <- diag(as.matrix(aidsResultElasCov_middle$marshall))
+tab_middle$se <- diag(as.matrix(aidsResultElasCov_middle$marshallStEr))
+tab_middle$lowerCI <- tab_middle$pe - tab_middle$pe * tab_middle$se * qnorm(0.975)
+tab_middle$higherCI <- tab_middle$pe + tab_middle$pe * tab_middle$se * qnorm(0.975)
+tab_middle$SES <- 'Middle'
+
+
+
+# HIGH SES
+aidsResult_high <- aidsEst( priceNames, shareNames, "TOT EXP", data = df_high, method = "LA", priceIndex = "S", shifterNames = "HH SZ" )
+pMeans_high <- colMeans( df_high[ , priceNames ], na.rm=T )
+wMeans_high <- colMeans( df_high[ , shareNames ], na.rm=T )
+aidsResultElasCov_high <- aidsElas( coef( aidsResult_high ), prices = pMeans_high, shares = wMeans_high, coefCov = vcov( aidsResult_high), df = df.residual( aidsResult_high ), shifterValues = c(1) )
+
+tab_high <- data.frame(matrix(nrow = 9, ncol = 0))
+tab_high$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_high$pe <- diag(as.matrix(aidsResultElasCov_high$marshall))
+tab_high$se <- diag(as.matrix(aidsResultElasCov_high$marshallStEr))
+tab_high$lowerCI <- tab_high$pe - tab_high$pe * tab_high$se * qnorm(0.975)
+tab_high$higherCI <- tab_high$pe + tab_high$pe * tab_high$se * qnorm(0.975)
+tab_high$SES <- 'High'
+
+
+
+# COMBINE AND CREATE FIGURE
+tab_combined <- rbind(tab_low, tab_middle, tab_high)
+tab_combined <- merge(tab_combined, tab_all_2[, c('category', 'order')], by = 'category')
+
+tab_combined$SES <- factor(tab_combined$SES, levels = c('High', 'Middle', 'Low'))
+tab_combined <- arrange(tab_combined, order, SES)
+
+tab_combined$label <- paste(as.character(format(round(tab_combined$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_combined$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_combined$lowerCI, 2), nsmall=2)), ')', sep = '')
+
+tab_combined$order <- as.numeric(tab_combined$order)
+
+
+fig3 <- ggplot(tab_combined, aes(fill = SES, x = pe, y = reorder(category, -order))) + geom_col(position=position_dodge(), width = 0.8) + geom_errorbar(aes(xmin = lowerCI, xmax = higherCI), width = 0.2, position=position_dodge(0.7)) + labs(y = '', x = 'Own-Price Elasticity', fontsize = 18) + theme_bw() + scale_fill_discrete(breaks=c('Low', 'Middle', 'High')) +
+  xlim(-1.8, 0)  +theme(axis.text.x=element_text(size=15)) +theme(axis.text.y=element_text(size=15)) + geom_text(aes(label=label), position=position_dodge(width=0.85), hjust = 1.2, size=3.0) + theme(plot.title = element_text(size = 15, face = "bold"),
+    legend.title=element_text(size=15), 
+    legend.text=element_text(size=15))
+
+
+
+ggsave("figure_3.png", width = 8, height = 8)
+
+fig3
+
+
+```
+
+# SUPPLEMENTARY
+
+```{r supfig1}
+
+tab_pe <- round(as.data.frame(aidsResultElasCov_low$marshall), 2)
+colnames(tab_pe) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_pe$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+
+tab_pe_melt <- melt(setDT(tab_pe), id = "share")
+tab_pe_melt <- tab_pe_melt[tab_pe_melt$share != tab_pe_melt$variable,]
+
+tab_se <- round(as.data.frame(aidsResultElasCov_low$marshallStEr), 2)
+colnames(tab_se) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se_melt <- melt(setDT(tab_se), id = "share")
+tab_se_melt <- tab_se_melt[tab_se_melt$share != tab_se_melt$variable,]
+
+tab_p <- round(as.data.frame(aidsResultElasCov_low$marshallPval), 4)
+colnames(tab_p) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p_melt <- melt(setDT(tab_p), id = "share")
+tab_p_melt <- tab_p_melt[tab_p_melt$share != tab_p_melt$variable,]
+
+tab_p_melt$value[tab_p_melt$value < 0.05] <- '*'
+tab_p_melt$value[tab_p_melt$value >= 0.05] <- ''
+
+tab_pe_melt$label <- paste(as.character(format(tab_pe_melt$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt$value, nsmall=2)), ')', tab_p_melt$value, sep = '')
+
+# re-ordering
+tab_pe_melt$order <- ''
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Vegetables", 1, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Fruit", 2, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Grains", 3, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Meat and alternatives", 4, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Dairy products and alternatives", 5, tab_pe_melt$order)
+
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Biscuits, cakes, and desserts", 6, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Confectionery and snacks", 7, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Non-alcoholic beverages", 8, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Other", 9, tab_pe_melt$order)
+
+figsup1 <- ggplot(tab_pe_melt, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 14)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=3.3) +theme(axis.text.x=element_text(size=11, face="bold")) +theme(axis.text.y=element_text(size=11, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+figsup1
+ggsave("figure_sup1.png", width = 8, height = 8)
+
+
+```
+
+
+```{r supfig2}
+
+tab_pe <- round(as.data.frame(aidsResultElasCov_middle$marshall), 2)
+colnames(tab_pe) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_pe$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+
+tab_pe_melt <- melt(setDT(tab_pe), id = "share")
+tab_pe_melt <- tab_pe_melt[tab_pe_melt$share != tab_pe_melt$variable,]
+
+tab_se <- round(as.data.frame(aidsResultElasCov_middle$marshallStEr), 2)
+colnames(tab_se) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se_melt <- melt(setDT(tab_se), id = "share")
+tab_se_melt <- tab_se_melt[tab_se_melt$share != tab_se_melt$variable,]
+
+tab_p <- round(as.data.frame(aidsResultElasCov_middle$marshallPval), 4)
+colnames(tab_p) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p_melt <- melt(setDT(tab_p), id = "share")
+tab_p_melt <- tab_p_melt[tab_p_melt$share != tab_p_melt$variable,]
+
+tab_p_melt$value[tab_p_melt$value < 0.05] <- '*'
+tab_p_melt$value[tab_p_melt$value >= 0.05] <- ''
+
+tab_pe_melt$label <- paste(as.character(format(tab_pe_melt$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt$value, nsmall=2)), ')', tab_p_melt$value, sep = '')
+
+# re-ordering
+tab_pe_melt$order <- ''
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Vegetables", 1, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Fruit", 2, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Grains", 3, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Meat and alternatives", 4, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Dairy products and alternatives", 5, tab_pe_melt$order)
+
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Biscuits, cakes, and desserts", 6, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Confectionery and snacks", 7, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Non-alcoholic beverages", 8, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Other", 9, tab_pe_melt$order)
+
+
+
+figsup2 <- ggplot(tab_pe_melt, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 14)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=3.3) +theme(axis.text.x=element_text(size=11, face="bold")) +theme(axis.text.y=element_text(size=11, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+figsup2
+ggsave("figure_sup2.png", width = 8, height = 8)
+
+
+```
+
+
+
+```{r supfig3}
+
+tab_pe <- round(as.data.frame(aidsResultElasCov_high$marshall), 2)
+colnames(tab_pe) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_pe$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+
+tab_pe_melt <- melt(setDT(tab_pe), id = "share")
+tab_pe_melt <- tab_pe_melt[tab_pe_melt$share != tab_pe_melt$variable,]
+
+tab_se <- round(as.data.frame(aidsResultElasCov_high$marshallStEr), 2)
+colnames(tab_se) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_se_melt <- melt(setDT(tab_se), id = "share")
+tab_se_melt <- tab_se_melt[tab_se_melt$share != tab_se_melt$variable,]
+
+tab_p <- round(as.data.frame(aidsResultElasCov_high$marshallPval), 4)
+colnames(tab_p) <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames))
+tab_p_melt <- melt(setDT(tab_p), id = "share")
+tab_p_melt <- tab_p_melt[tab_p_melt$share != tab_p_melt$variable,]
+
+tab_p_melt$value[tab_p_melt$value < 0.05] <- '*'
+tab_p_melt$value[tab_p_melt$value >= 0.05] <- ''
+
+tab_pe_melt$label <- paste(as.character(format(tab_pe_melt$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt$value, nsmall=2)), ')', tab_p_melt$value, sep = '')
+
+
+# re-ordering
+tab_pe_melt$order <- ''
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Vegetables", 1, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Fruit", 2, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Grains", 3, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Meat and alternatives", 4, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Dairy products and alternatives", 5, tab_pe_melt$order)
+
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Biscuits, cakes, and desserts", 6, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Confectionery and snacks", 7, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Non-alcoholic beverages", 8, tab_pe_melt$order)
+tab_pe_melt$order <-  ifelse(tab_pe_melt$share == "Other", 9, tab_pe_melt$order)
+
+
+
+figsup3 <- ggplot(tab_pe_melt, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 14)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=3.3) +theme(axis.text.x=element_text(size=11, face="bold")) +theme(axis.text.y=element_text(size=11, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+figsup3
+ggsave("figure_sup3.png", width = 8, height = 8)
+
+
+```
+
+# MINOR CATEGORY CPES
+
+```{r supfig4}
+# create figure based on table
+fig_a <- ggplot(tab_pe_melt_a, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 16)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=4.5) +theme(axis.text.x=element_text(size=16, face="bold")) +theme(axis.text.y=element_text(size=16, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+
+
+# save figure
+ggsave("CPE_minor_a.png", width = 8, height = 8)
+
+
+
+fig_a
+```
+
+```{r supfig5}
+# create figure based on table
+fig_b <- ggplot(tab_pe_melt_b, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 16)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=4.5) +theme(axis.text.x=element_text(size=16, face="bold")) +theme(axis.text.y=element_text(size=16, face="bold")) +
+  scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+# save figure
+ggsave("CPE_minor_b.png", width = 8, height = 8)
+
+
+fig_b
+```
+
+```{r supfig6}
+# create figure based on table
+fig_c <- ggplot(tab_pe_melt_c, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 16)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=3) +theme(axis.text.x=element_text(size=16, face="bold")) +theme(axis.text.y=element_text(size=16, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+# save figure
+ggsave("CPE_minor_c.png", width = 8, height = 8)
+
+
+fig_c
+
+```
+
+
+```{r supfig7}
+# create figure based on table
+fig_d <- ggplot(tab_pe_melt_d, aes(x = reorder(share, -desc(order)), y = reorder(variable, -desc(order)), fill = value)) + geom_tile()  + labs(y = 'Change in price', x = 'Change in quantity demanded', size = 16)  + theme_classic() + theme(axis.text.x=element_text(angle=90,hjust=1)) + geom_text(aes(label=  label  ), size=4.5) +theme(axis.text.x=element_text(size=16, face="bold")) +theme(axis.text.y=element_text(size=16, face="bold")) +
+ scale_fill_gradientn(colors = hcl.colors(40, "RdYlGn"), limit = c(-0.34,0.34)) +
+  theme(legend.title=element_blank())
+
+# save figure
+ggsave("CPE_minor_d.png", width = 8, height = 8)
+
+
+fig_d
+```
+# OPE for minor categories by SES
+```{r minorOPE_SES}
+
+df_minor_a_low <- subset(df_all_minor_a, SES == 'low')
+df_minor_a_middle <- subset(df_all_minor_a, SES == 'middle')
+df_minor_a_high <- subset(df_all_minor_a, SES == 'high')
+
+df_minor_b_low <- subset(df_all_minor_b, SES == 'low')
+df_minor_b_middle <- subset(df_all_minor_b, SES == 'middle')
+df_minor_b_high <- subset(df_all_minor_b, SES == 'high')
+
+df_minor_c_low <- subset(df_all_minor_c, SES == 'low')
+df_minor_c_middle <- subset(df_all_minor_c, SES == 'middle')
+df_minor_c_high <- subset(df_all_minor_c, SES == 'high')
+
+df_minor_d_low <- subset(df_all_minor_d, SES == 'low')
+df_minor_d_middle <- subset(df_all_minor_d, SES == 'middle')
+df_minor_d_high <- subset(df_all_minor_d, SES == 'high')
+
+
+
+# estimate elasticities
+aidsResult_all_a <- aidsEst( priceNames_a, shareNames_a, "TOT EXP", data = df_minor_a_low, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_a <- colMeans( df_minor_a_low[ , priceNames_a ], na.rm=T )
+wMeans_all_a <- colMeans( df_minor_a_low[ , shareNames_a ], na.rm=T )
+aidsResultElasCov_all_a <- aidsElas( coef( aidsResult_all_a ), prices = pMeans_all_a, shares = wMeans_all_a, coefCov = vcov( aidsResult_all_a), df = df.residual( aidsResult_all_a ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_a <- length(shareNames_a)
+tab_all_a <- data.frame(matrix(nrow = n_categories_a, ncol = 0))
+tab_all_a$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_all_a$pe <- diag(as.matrix(aidsResultElasCov_all_a$marshall))
+tab_all_a$se <- diag(as.matrix(aidsResultElasCov_all_a$marshallStEr))
+tab_all_a$lowerCI <- tab_all_a$pe - tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+tab_all_a$higherCI <- tab_all_a$pe + tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+setorder(tab_all_a,pe)
+tab_all_a$label <- paste(as.character(format(round(tab_all_a$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_a$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_a$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_a <- arrange(tab_all_a, pe)
+tab_all_a$order <- seq(1, length(shareNames_a)) 
+
+# table - extract marshallian price elasticities
+tab_pe_a <- round(as.data.frame(aidsResultElasCov_all_a$marshall), 2)
+colnames(tab_pe_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_melt_a <- melt(setDT(tab_pe_a), id = "share")
+tab_pe_melt_a <- tab_pe_melt_a[tab_pe_melt_a$share != tab_pe_melt_a$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallStEr), 2)
+colnames(tab_se_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_melt_a <- melt(setDT(tab_se_a), id = "share")
+tab_se_melt_a <- tab_se_melt_a[tab_se_melt_a$share != tab_se_melt_a$variable,]
+
+# table - p values
+tab_p_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallPval), 4)
+colnames(tab_p_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_melt_a <- melt(setDT(tab_p_a), id = "share")
+tab_p_melt_a <- tab_p_melt_a[tab_p_melt_a$share != tab_p_melt_a$variable,]
+tab_p_melt_a$value[tab_p_melt_a$value < 0.05] <- '*'
+tab_p_melt_a$value[tab_p_melt_a$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_a$label <- paste(as.character(format(tab_pe_melt_a$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_a$value, nsmall=2)), ')', tab_p_melt_a$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_b <- aidsEst( priceNames_b, shareNames_b, "TOT EXP", data = df_minor_b_low, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_b <- colMeans( df_minor_b_low[ , priceNames_b ], na.rm=T )
+wMeans_all_b <- colMeans( df_minor_b_low[ , shareNames_b ], na.rm=T )
+aidsResultElasCov_all_b <- aidsElas( coef( aidsResult_all_b ), prices = pMeans_all_b, shares = wMeans_all_b, coefCov = vcov( aidsResult_all_b), df = df.residual( aidsResult_all_b ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_b <- length(shareNames_b)
+tab_all_b <- data.frame(matrix(nrow = n_categories_b, ncol = 0))
+tab_all_b$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_all_b$pe <- diag(as.matrix(aidsResultElasCov_all_b$marshall))
+tab_all_b$se <- diag(as.matrix(aidsResultElasCov_all_b$marshallStEr))
+tab_all_b$lowerCI <- tab_all_b$pe - tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+tab_all_b$higherCI <- tab_all_b$pe + tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+setorder(tab_all_b,pe)
+tab_all_b$label <- paste(as.character(format(round(tab_all_b$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_b$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_b$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_b <- arrange(tab_all_b, pe)
+tab_all_b$order <- seq(1, length(shareNames_b)) 
+
+# table - extract marshallian price elasticities
+tab_pe_b <- round(as.data.frame(aidsResultElasCov_all_b$marshall), 2)
+colnames(tab_pe_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_melt_b <- melt(setDT(tab_pe_b), id = "share")
+tab_pe_melt_b <- tab_pe_melt_b[tab_pe_melt_b$share != tab_pe_melt_b$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallStEr), 2)
+colnames(tab_se_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_melt_b <- melt(setDT(tab_se_b), id = "share")
+tab_se_melt_b <- tab_se_melt_b[tab_se_melt_b$share != tab_se_melt_b$variable,]
+
+# table - p values
+tab_p_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallPval), 4)
+colnames(tab_p_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_melt_b <- melt(setDT(tab_p_b), id = "share")
+tab_p_melt_b <- tab_p_melt_b[tab_p_melt_b$share != tab_p_melt_b$variable,]
+tab_p_melt_b$value[tab_p_melt_b$value < 0.05] <- '*'
+tab_p_melt_b$value[tab_p_melt_b$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_b$label <- paste(as.character(format(tab_pe_melt_b$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_b$value, nsmall=2)), ')', tab_p_melt_b$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_c <- aidsEst( priceNames_c, shareNames_c, "TOT EXP", data = df_minor_c_low, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_c <- colMeans( df_minor_c_low[ , priceNames_c ], na.rm=T )
+wMeans_all_c <- colMeans( df_minor_c_low[ , shareNames_c ], na.rm=T )
+aidsResultElasCov_all_c <- aidsElas( coef( aidsResult_all_c ), prices = pMeans_all_c, shares = wMeans_all_c, coefCov = vcov( aidsResult_all_c), df = df.residual( aidsResult_all_c ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_c <- length(shareNames_c)
+tab_all_c <- data.frame(matrix(nrow = n_categories_c, ncol = 0))
+tab_all_c$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_all_c$pe <- diag(as.matrix(aidsResultElasCov_all_c$marshall))
+tab_all_c$se <- diag(as.matrix(aidsResultElasCov_all_c$marshallStEr))
+tab_all_c$lowerCI <- tab_all_c$pe - tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+tab_all_c$higherCI <- tab_all_c$pe + tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+setorder(tab_all_c,pe)
+tab_all_c$label <- paste(as.character(format(round(tab_all_c$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_c$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_c$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_c <- arrange(tab_all_c, pe)
+tab_all_c$order <- seq(1, length(shareNames_c)) 
+
+# table - extract marshallian price elasticities
+tab_pe_c <- round(as.data.frame(aidsResultElasCov_all_c$marshall), 2)
+colnames(tab_pe_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_melt_c <- melt(setDT(tab_pe_c), id = "share")
+tab_pe_melt_c <- tab_pe_melt_c[tab_pe_melt_c$share != tab_pe_melt_c$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallStEr), 2)
+colnames(tab_se_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_melt_c <- melt(setDT(tab_se_c), id = "share")
+tab_se_melt_c <- tab_se_melt_c[tab_se_melt_c$share != tab_se_melt_c$variable,]
+
+# table - p values
+tab_p_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallPval), 4)
+colnames(tab_p_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_melt_c <- melt(setDT(tab_p_c), id = "share")
+tab_p_melt_c <- tab_p_melt_c[tab_p_melt_c$share != tab_p_melt_c$variable,]
+tab_p_melt_c$value[tab_p_melt_c$value < 0.05] <- '*'
+tab_p_melt_c$value[tab_p_melt_c$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_c$label <- paste(as.character(format(tab_pe_melt_c$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_c$value, nsmall=2)), ')', tab_p_melt_c$value, sep = '')
+
+
+
+
+# estimate elasticities
+aidsResult_all_d <- aidsEst( priceNames_d, shareNames_d, "TOT EXP", data = df_minor_d_low, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_d <- colMeans( df_minor_d_low[ , priceNames_d ], na.rm=T )
+wMeans_all_d <- colMeans( df_minor_d_low[ , shareNames_d ], na.rm=T )
+aidsResultElasCov_all_d <- aidsElas( coef( aidsResult_all_d ), prices = pMeans_all_d, shares = wMeans_all_d, coefCov = vcov( aidsResult_all_d), df = df.residual( aidsResult_all_d ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_d <- length(shareNames_d)
+tab_all_d <- data.frame(matrix(nrow = n_categories_d, ncol = 0))
+tab_all_d$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_all_d$pe <- diag(as.matrix(aidsResultElasCov_all_d$marshall))
+tab_all_d$se <- diag(as.matrix(aidsResultElasCov_all_d$marshallStEr))
+tab_all_d$lowerCI <- tab_all_d$pe - tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+tab_all_d$higherCI <- tab_all_d$pe + tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+setorder(tab_all_d,pe)
+tab_all_d$label <- paste(as.character(format(round(tab_all_d$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_d$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_d$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_d <- arrange(tab_all_d, pe)
+tab_all_d$order <- seq(1, length(shareNames_d)) 
+
+# table - extract marshallian price elasticities
+tab_pe_d <- round(as.data.frame(aidsResultElasCov_all_d$marshall), 2)
+colnames(tab_pe_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_melt_d <- melt(setDT(tab_pe_d), id = "share")
+tab_pe_melt_d <- tab_pe_melt_d[tab_pe_melt_d$share != tab_pe_melt_d$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallStEr), 2)
+colnames(tab_se_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_melt_d <- melt(setDT(tab_se_d), id = "share")
+tab_se_melt_d <- tab_se_melt_d[tab_se_melt_d$share != tab_se_melt_d$variable,]
+
+# table - p values
+tab_p_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallPval), 4)
+colnames(tab_p_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_melt_d <- melt(setDT(tab_p_d), id = "share")
+tab_p_melt_d <- tab_p_melt_d[tab_p_melt_d$share != tab_p_melt_d$variable,]
+tab_p_melt_d$value[tab_p_melt_d$value < 0.05] <- '*'
+tab_p_melt_d$value[tab_p_melt_d$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_d$label <- paste(as.character(format(tab_pe_melt_d$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_d$value, nsmall=2)), ')', tab_p_melt_d$value, sep = '')
+
+tab_all_a$SES <- "Low"
+tab_all_b$SES <- "Low"
+tab_all_c$SES <- "Low"
+tab_all_d$SES <- "Low"
+
+
+# combine major and minor own-price elasticity results
+tab_all_2 <- rbind(tab_combined[tab_combined$SES=="Low",], 
+                 tab_all_a,
+                 tab_all_b,
+                 tab_all_c,
+                 tab_all_d) 
+
+
+# set order
+tab_all_2$order <- ''
+tab_all_2$order <-  ifelse(tab_all_2$category == "Vegetables", 10, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fruit", 20, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Meat and alternatives", 30, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Red meat", 31, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Poultry", 32, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Processed meat", 33, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fish and seafoods", 34, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Eggs", 35, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Nuts and seeds", 36, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Legumes/beans", 37, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Grains", 40, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Bread", 41, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Breakfast cereals", 42, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Pasta, rice, and other cereals", 43, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Dairy products and alternatives", 50, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Milk", 51, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Yoghurt", 52, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cheese and cream", 53, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ice-cream", 54, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits, cakes, and desserts", 60, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits", 61, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cakes, muffins, and pastries", 62, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Desserts", 63, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Confectionery and snacks", 70, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Chocolate-based confectionery", 71, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-based confectionery", 72, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Snackfoods", 73, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-alcoholic beverages", 80, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-sweetened beverages", 81, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-sugar sweetened beverages", 82, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Tea and coffee", 83, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Other", 90, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fats and oils", 91, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugars, honey, and related products", 92, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sauces, dressings, spreads, and dips", 93, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ready meals", 94, tab_all_2$order)
+
+
+tab_all_2$order <- as.numeric(tab_all_2$order)
+tab_all_2 <- arrange(tab_all_2, order)
+tab_all_OPE_low <- tab_all_2[c("category", "label")]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MIDDLE
+
+
+# estimate elasticities
+aidsResult_all_a <- aidsEst( priceNames_a, shareNames_a, "TOT EXP", data = df_minor_a_middle, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_a <- colMeans( df_minor_a_middle[ , priceNames_a ], na.rm=T )
+wMeans_all_a <- colMeans( df_minor_a_middle[ , shareNames_a ], na.rm=T )
+aidsResultElasCov_all_a <- aidsElas( coef( aidsResult_all_a ), prices = pMeans_all_a, shares = wMeans_all_a, coefCov = vcov( aidsResult_all_a), df = df.residual( aidsResult_all_a ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_a <- length(shareNames_a)
+tab_all_a <- data.frame(matrix(nrow = n_categories_a, ncol = 0))
+tab_all_a$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_all_a$pe <- diag(as.matrix(aidsResultElasCov_all_a$marshall))
+tab_all_a$se <- diag(as.matrix(aidsResultElasCov_all_a$marshallStEr))
+tab_all_a$lowerCI <- tab_all_a$pe - tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+tab_all_a$higherCI <- tab_all_a$pe + tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+setorder(tab_all_a,pe)
+tab_all_a$label <- paste(as.character(format(round(tab_all_a$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_a$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_a$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_a <- arrange(tab_all_a, pe)
+tab_all_a$order <- seq(1, length(shareNames_a)) 
+
+# table - extract marshallian price elasticities
+tab_pe_a <- round(as.data.frame(aidsResultElasCov_all_a$marshall), 2)
+colnames(tab_pe_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_melt_a <- melt(setDT(tab_pe_a), id = "share")
+tab_pe_melt_a <- tab_pe_melt_a[tab_pe_melt_a$share != tab_pe_melt_a$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallStEr), 2)
+colnames(tab_se_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_melt_a <- melt(setDT(tab_se_a), id = "share")
+tab_se_melt_a <- tab_se_melt_a[tab_se_melt_a$share != tab_se_melt_a$variable,]
+
+# table - p values
+tab_p_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallPval), 4)
+colnames(tab_p_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_melt_a <- melt(setDT(tab_p_a), id = "share")
+tab_p_melt_a <- tab_p_melt_a[tab_p_melt_a$share != tab_p_melt_a$variable,]
+tab_p_melt_a$value[tab_p_melt_a$value < 0.05] <- '*'
+tab_p_melt_a$value[tab_p_melt_a$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_a$label <- paste(as.character(format(tab_pe_melt_a$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_a$value, nsmall=2)), ')', tab_p_melt_a$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_b <- aidsEst( priceNames_b, shareNames_b, "TOT EXP", data = df_minor_b_middle, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_b <- colMeans( df_minor_b_middle[ , priceNames_b ], na.rm=T )
+wMeans_all_b <- colMeans( df_minor_b_middle[ , shareNames_b ], na.rm=T )
+aidsResultElasCov_all_b <- aidsElas( coef( aidsResult_all_b ), prices = pMeans_all_b, shares = wMeans_all_b, coefCov = vcov( aidsResult_all_b), df = df.residual( aidsResult_all_b ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_b <- length(shareNames_b)
+tab_all_b <- data.frame(matrix(nrow = n_categories_b, ncol = 0))
+tab_all_b$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_all_b$pe <- diag(as.matrix(aidsResultElasCov_all_b$marshall))
+tab_all_b$se <- diag(as.matrix(aidsResultElasCov_all_b$marshallStEr))
+tab_all_b$lowerCI <- tab_all_b$pe - tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+tab_all_b$higherCI <- tab_all_b$pe + tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+setorder(tab_all_b,pe)
+tab_all_b$label <- paste(as.character(format(round(tab_all_b$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_b$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_b$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_b <- arrange(tab_all_b, pe)
+tab_all_b$order <- seq(1, length(shareNames_b)) 
+
+# table - extract marshallian price elasticities
+tab_pe_b <- round(as.data.frame(aidsResultElasCov_all_b$marshall), 2)
+colnames(tab_pe_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_melt_b <- melt(setDT(tab_pe_b), id = "share")
+tab_pe_melt_b <- tab_pe_melt_b[tab_pe_melt_b$share != tab_pe_melt_b$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallStEr), 2)
+colnames(tab_se_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_melt_b <- melt(setDT(tab_se_b), id = "share")
+tab_se_melt_b <- tab_se_melt_b[tab_se_melt_b$share != tab_se_melt_b$variable,]
+
+# table - p values
+tab_p_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallPval), 4)
+colnames(tab_p_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_melt_b <- melt(setDT(tab_p_b), id = "share")
+tab_p_melt_b <- tab_p_melt_b[tab_p_melt_b$share != tab_p_melt_b$variable,]
+tab_p_melt_b$value[tab_p_melt_b$value < 0.05] <- '*'
+tab_p_melt_b$value[tab_p_melt_b$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_b$label <- paste(as.character(format(tab_pe_melt_b$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_b$value, nsmall=2)), ')', tab_p_melt_b$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_c <- aidsEst( priceNames_c, shareNames_c, "TOT EXP", data = df_minor_c_middle, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_c <- colMeans( df_minor_c_middle[ , priceNames_c ], na.rm=T )
+wMeans_all_c <- colMeans( df_minor_c_middle[ , shareNames_c ], na.rm=T )
+aidsResultElasCov_all_c <- aidsElas( coef( aidsResult_all_c ), prices = pMeans_all_c, shares = wMeans_all_c, coefCov = vcov( aidsResult_all_c), df = df.residual( aidsResult_all_c ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_c <- length(shareNames_c)
+tab_all_c <- data.frame(matrix(nrow = n_categories_c, ncol = 0))
+tab_all_c$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_all_c$pe <- diag(as.matrix(aidsResultElasCov_all_c$marshall))
+tab_all_c$se <- diag(as.matrix(aidsResultElasCov_all_c$marshallStEr))
+tab_all_c$lowerCI <- tab_all_c$pe - tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+tab_all_c$higherCI <- tab_all_c$pe + tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+setorder(tab_all_c,pe)
+tab_all_c$label <- paste(as.character(format(round(tab_all_c$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_c$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_c$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_c <- arrange(tab_all_c, pe)
+tab_all_c$order <- seq(1, length(shareNames_c)) 
+
+# table - extract marshallian price elasticities
+tab_pe_c <- round(as.data.frame(aidsResultElasCov_all_c$marshall), 2)
+colnames(tab_pe_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_melt_c <- melt(setDT(tab_pe_c), id = "share")
+tab_pe_melt_c <- tab_pe_melt_c[tab_pe_melt_c$share != tab_pe_melt_c$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallStEr), 2)
+colnames(tab_se_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_melt_c <- melt(setDT(tab_se_c), id = "share")
+tab_se_melt_c <- tab_se_melt_c[tab_se_melt_c$share != tab_se_melt_c$variable,]
+
+# table - p values
+tab_p_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallPval), 4)
+colnames(tab_p_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_melt_c <- melt(setDT(tab_p_c), id = "share")
+tab_p_melt_c <- tab_p_melt_c[tab_p_melt_c$share != tab_p_melt_c$variable,]
+tab_p_melt_c$value[tab_p_melt_c$value < 0.05] <- '*'
+tab_p_melt_c$value[tab_p_melt_c$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_c$label <- paste(as.character(format(tab_pe_melt_c$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_c$value, nsmall=2)), ')', tab_p_melt_c$value, sep = '')
+
+
+
+
+# estimate elasticities
+aidsResult_all_d <- aidsEst( priceNames_d, shareNames_d, "TOT EXP", data = df_minor_d_middle, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_d <- colMeans( df_minor_d_middle[ , priceNames_d ], na.rm=T )
+wMeans_all_d <- colMeans( df_minor_d_middle[ , shareNames_d ], na.rm=T )
+aidsResultElasCov_all_d <- aidsElas( coef( aidsResult_all_d ), prices = pMeans_all_d, shares = wMeans_all_d, coefCov = vcov( aidsResult_all_d), df = df.residual( aidsResult_all_d ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_d <- length(shareNames_d)
+tab_all_d <- data.frame(matrix(nrow = n_categories_d, ncol = 0))
+tab_all_d$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_all_d$pe <- diag(as.matrix(aidsResultElasCov_all_d$marshall))
+tab_all_d$se <- diag(as.matrix(aidsResultElasCov_all_d$marshallStEr))
+tab_all_d$lowerCI <- tab_all_d$pe - tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+tab_all_d$higherCI <- tab_all_d$pe + tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+setorder(tab_all_d,pe)
+tab_all_d$label <- paste(as.character(format(round(tab_all_d$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_d$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_d$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_d <- arrange(tab_all_d, pe)
+tab_all_d$order <- seq(1, length(shareNames_d)) 
+
+# table - extract marshallian price elasticities
+tab_pe_d <- round(as.data.frame(aidsResultElasCov_all_d$marshall), 2)
+colnames(tab_pe_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_melt_d <- melt(setDT(tab_pe_d), id = "share")
+tab_pe_melt_d <- tab_pe_melt_d[tab_pe_melt_d$share != tab_pe_melt_d$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallStEr), 2)
+colnames(tab_se_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_melt_d <- melt(setDT(tab_se_d), id = "share")
+tab_se_melt_d <- tab_se_melt_d[tab_se_melt_d$share != tab_se_melt_d$variable,]
+
+# table - p values
+tab_p_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallPval), 4)
+colnames(tab_p_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_melt_d <- melt(setDT(tab_p_d), id = "share")
+tab_p_melt_d <- tab_p_melt_d[tab_p_melt_d$share != tab_p_melt_d$variable,]
+tab_p_melt_d$value[tab_p_melt_d$value < 0.05] <- '*'
+tab_p_melt_d$value[tab_p_melt_d$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_d$label <- paste(as.character(format(tab_pe_melt_d$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_d$value, nsmall=2)), ')', tab_p_melt_d$value, sep = '')
+
+tab_all_a$SES <- "Middle"
+tab_all_b$SES <- "Middle"
+tab_all_c$SES <- "Middle"
+tab_all_d$SES <- "Middle"
+
+
+# combine major and minor own-price elasticity results
+tab_all_2 <- rbind(tab_combined[tab_combined$SES=="Middle",], 
+                 tab_all_a,
+                 tab_all_b,
+                 tab_all_c,
+                 tab_all_d) 
+
+
+# set order
+tab_all_2$order <- ''
+tab_all_2$order <-  ifelse(tab_all_2$category == "Vegetables", 10, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fruit", 20, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Meat and alternatives", 30, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Red meat", 31, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Poultry", 32, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Processed meat", 33, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fish and seafoods", 34, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Eggs", 35, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Nuts and seeds", 36, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Legumes/beans", 37, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Grains", 40, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Bread", 41, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Breakfast cereals", 42, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Pasta, rice, and other cereals", 43, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Dairy products and alternatives", 50, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Milk", 51, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Yoghurt", 52, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cheese and cream", 53, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ice-cream", 54, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits, cakes, and desserts", 60, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits", 61, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cakes, muffins, and pastries", 62, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Desserts", 63, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Confectionery and snacks", 70, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Chocolate-based confectionery", 71, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-based confectionery", 72, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Snackfoods", 73, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-alcoholic beverages", 80, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-sweetened beverages", 81, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-sugar sweetened beverages", 82, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Tea and coffee", 83, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Other", 90, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fats and oils", 91, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugars, honey, and related products", 92, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sauces, dressings, spreads, and dips", 93, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ready meals", 94, tab_all_2$order)
+
+
+tab_all_2$order <- as.numeric(tab_all_2$order)
+tab_all_2 <- arrange(tab_all_2, order)
+tab_all_OPE_middle <- tab_all_2[c("category", "label")]
+
+
+
+
+
+
+
+
+
+
+
+
+
+# HIGH
+
+# estimate elasticities
+aidsResult_all_a <- aidsEst( priceNames_a, shareNames_a, "TOT EXP", data = df_minor_a_high, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_a <- colMeans( df_minor_a_high[ , priceNames_a ], na.rm=T )
+wMeans_all_a <- colMeans( df_minor_a_high[ , shareNames_a ], na.rm=T )
+aidsResultElasCov_all_a <- aidsElas( coef( aidsResult_all_a ), prices = pMeans_all_a, shares = wMeans_all_a, coefCov = vcov( aidsResult_all_a), df = df.residual( aidsResult_all_a ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_a <- length(shareNames_a)
+tab_all_a <- data.frame(matrix(nrow = n_categories_a, ncol = 0))
+tab_all_a$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_all_a$pe <- diag(as.matrix(aidsResultElasCov_all_a$marshall))
+tab_all_a$se <- diag(as.matrix(aidsResultElasCov_all_a$marshallStEr))
+tab_all_a$lowerCI <- tab_all_a$pe - tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+tab_all_a$higherCI <- tab_all_a$pe + tab_all_a$pe * tab_all_a$se * qnorm(0.975)
+setorder(tab_all_a,pe)
+tab_all_a$label <- paste(as.character(format(round(tab_all_a$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_a$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_a$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_a <- arrange(tab_all_a, pe)
+tab_all_a$order <- seq(1, length(shareNames_a)) 
+
+# table - extract marshallian price elasticities
+tab_pe_a <- round(as.data.frame(aidsResultElasCov_all_a$marshall), 2)
+colnames(tab_pe_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_pe_melt_a <- melt(setDT(tab_pe_a), id = "share")
+tab_pe_melt_a <- tab_pe_melt_a[tab_pe_melt_a$share != tab_pe_melt_a$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallStEr), 2)
+colnames(tab_se_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_se_melt_a <- melt(setDT(tab_se_a), id = "share")
+tab_se_melt_a <- tab_se_melt_a[tab_se_melt_a$share != tab_se_melt_a$variable,]
+
+# table - p values
+tab_p_a <- round(as.data.frame(aidsResultElasCov_all_a$marshallPval), 4)
+colnames(tab_p_a) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_a$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_a))
+tab_p_melt_a <- melt(setDT(tab_p_a), id = "share")
+tab_p_melt_a <- tab_p_melt_a[tab_p_melt_a$share != tab_p_melt_a$variable,]
+tab_p_melt_a$value[tab_p_melt_a$value < 0.05] <- '*'
+tab_p_melt_a$value[tab_p_melt_a$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_a$label <- paste(as.character(format(tab_pe_melt_a$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_a$value, nsmall=2)), ')', tab_p_melt_a$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_b <- aidsEst( priceNames_b, shareNames_b, "TOT EXP", data = df_minor_b_high, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_b <- colMeans( df_minor_b_high[ , priceNames_b ], na.rm=T )
+wMeans_all_b <- colMeans( df_minor_b_high[ , shareNames_b ], na.rm=T )
+aidsResultElasCov_all_b <- aidsElas( coef( aidsResult_all_b ), prices = pMeans_all_b, shares = wMeans_all_b, coefCov = vcov( aidsResult_all_b), df = df.residual( aidsResult_all_b ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_b <- length(shareNames_b)
+tab_all_b <- data.frame(matrix(nrow = n_categories_b, ncol = 0))
+tab_all_b$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_all_b$pe <- diag(as.matrix(aidsResultElasCov_all_b$marshall))
+tab_all_b$se <- diag(as.matrix(aidsResultElasCov_all_b$marshallStEr))
+tab_all_b$lowerCI <- tab_all_b$pe - tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+tab_all_b$higherCI <- tab_all_b$pe + tab_all_b$pe * tab_all_b$se * qnorm(0.975)
+setorder(tab_all_b,pe)
+tab_all_b$label <- paste(as.character(format(round(tab_all_b$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_b$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_b$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_b <- arrange(tab_all_b, pe)
+tab_all_b$order <- seq(1, length(shareNames_b)) 
+
+# table - extract marshallian price elasticities
+tab_pe_b <- round(as.data.frame(aidsResultElasCov_all_b$marshall), 2)
+colnames(tab_pe_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_pe_melt_b <- melt(setDT(tab_pe_b), id = "share")
+tab_pe_melt_b <- tab_pe_melt_b[tab_pe_melt_b$share != tab_pe_melt_b$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallStEr), 2)
+colnames(tab_se_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_se_melt_b <- melt(setDT(tab_se_b), id = "share")
+tab_se_melt_b <- tab_se_melt_b[tab_se_melt_b$share != tab_se_melt_b$variable,]
+
+# table - p values
+tab_p_b <- round(as.data.frame(aidsResultElasCov_all_b$marshallPval), 4)
+colnames(tab_p_b) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_b$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_b))
+tab_p_melt_b <- melt(setDT(tab_p_b), id = "share")
+tab_p_melt_b <- tab_p_melt_b[tab_p_melt_b$share != tab_p_melt_b$variable,]
+tab_p_melt_b$value[tab_p_melt_b$value < 0.05] <- '*'
+tab_p_melt_b$value[tab_p_melt_b$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_b$label <- paste(as.character(format(tab_pe_melt_b$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_b$value, nsmall=2)), ')', tab_p_melt_b$value, sep = '')
+
+
+
+
+
+# estimate elasticities
+aidsResult_all_c <- aidsEst( priceNames_c, shareNames_c, "TOT EXP", data = df_minor_c_high, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_c <- colMeans( df_minor_c_high[ , priceNames_c ], na.rm=T )
+wMeans_all_c <- colMeans( df_minor_c_high[ , shareNames_c ], na.rm=T )
+aidsResultElasCov_all_c <- aidsElas( coef( aidsResult_all_c ), prices = pMeans_all_c, shares = wMeans_all_c, coefCov = vcov( aidsResult_all_c), df = df.residual( aidsResult_all_c ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_c <- length(shareNames_c)
+tab_all_c <- data.frame(matrix(nrow = n_categories_c, ncol = 0))
+tab_all_c$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_all_c$pe <- diag(as.matrix(aidsResultElasCov_all_c$marshall))
+tab_all_c$se <- diag(as.matrix(aidsResultElasCov_all_c$marshallStEr))
+tab_all_c$lowerCI <- tab_all_c$pe - tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+tab_all_c$higherCI <- tab_all_c$pe + tab_all_c$pe * tab_all_c$se * qnorm(0.975)
+setorder(tab_all_c,pe)
+tab_all_c$label <- paste(as.character(format(round(tab_all_c$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_c$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_c$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_c <- arrange(tab_all_c, pe)
+tab_all_c$order <- seq(1, length(shareNames_c)) 
+
+# table - extract marshallian price elasticities
+tab_pe_c <- round(as.data.frame(aidsResultElasCov_all_c$marshall), 2)
+colnames(tab_pe_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_pe_melt_c <- melt(setDT(tab_pe_c), id = "share")
+tab_pe_melt_c <- tab_pe_melt_c[tab_pe_melt_c$share != tab_pe_melt_c$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallStEr), 2)
+colnames(tab_se_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_se_melt_c <- melt(setDT(tab_se_c), id = "share")
+tab_se_melt_c <- tab_se_melt_c[tab_se_melt_c$share != tab_se_melt_c$variable,]
+
+# table - p values
+tab_p_c <- round(as.data.frame(aidsResultElasCov_all_c$marshallPval), 4)
+colnames(tab_p_c) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_c$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_c))
+tab_p_melt_c <- melt(setDT(tab_p_c), id = "share")
+tab_p_melt_c <- tab_p_melt_c[tab_p_melt_c$share != tab_p_melt_c$variable,]
+tab_p_melt_c$value[tab_p_melt_c$value < 0.05] <- '*'
+tab_p_melt_c$value[tab_p_melt_c$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_c$label <- paste(as.character(format(tab_pe_melt_c$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_c$value, nsmall=2)), ')', tab_p_melt_c$value, sep = '')
+
+
+
+
+# estimate elasticities
+aidsResult_all_d <- aidsEst( priceNames_d, shareNames_d, "TOT EXP", data = df_minor_d_high, method = "LA", priceIndex = "S", shifterNames = "HH SZ")
+
+pMeans_all_d <- colMeans( df_minor_d_high[ , priceNames_d ], na.rm=T )
+wMeans_all_d <- colMeans( df_minor_d_high[ , shareNames_d ], na.rm=T )
+aidsResultElasCov_all_d <- aidsElas( coef( aidsResult_all_d ), prices = pMeans_all_d, shares = wMeans_all_d, coefCov = vcov( aidsResult_all_d), df = df.residual( aidsResult_all_d ), shifterValues = c(1))
+
+
+# display results in table for demand model
+n_categories_d <- length(shareNames_d)
+tab_all_d <- data.frame(matrix(nrow = n_categories_d, ncol = 0))
+tab_all_d$category <-  gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_all_d$pe <- diag(as.matrix(aidsResultElasCov_all_d$marshall))
+tab_all_d$se <- diag(as.matrix(aidsResultElasCov_all_d$marshallStEr))
+tab_all_d$lowerCI <- tab_all_d$pe - tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+tab_all_d$higherCI <- tab_all_d$pe + tab_all_d$pe * tab_all_d$se * qnorm(0.975)
+setorder(tab_all_d,pe)
+tab_all_d$label <- paste(as.character(format(round(tab_all_d$pe, 2), nsmall=2)), ' (', as.character(format(round(tab_all_d$higherCI, 2), nsmall=2)), ',', as.character(format(round(tab_all_d$lowerCI, 2), nsmall=2)), ')', sep = '')
+tab_all_d <- arrange(tab_all_d, pe)
+tab_all_d$order <- seq(1, length(shareNames_d)) 
+
+# table - extract marshallian price elasticities
+tab_pe_d <- round(as.data.frame(aidsResultElasCov_all_d$marshall), 2)
+colnames(tab_pe_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_pe_melt_d <- melt(setDT(tab_pe_d), id = "share")
+tab_pe_melt_d <- tab_pe_melt_d[tab_pe_melt_d$share != tab_pe_melt_d$variable,]
+
+# table - standard errors for marshallian price eas
+tab_se_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallStEr), 2)
+colnames(tab_se_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_se_melt_d <- melt(setDT(tab_se_d), id = "share")
+tab_se_melt_d <- tab_se_melt_d[tab_se_melt_d$share != tab_se_melt_d$variable,]
+
+# table - p values
+tab_p_d <- round(as.data.frame(aidsResultElasCov_all_d$marshallPval), 4)
+colnames(tab_p_d) <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_d$share <- gsub(' PRICE', '', gsub('_', ' ', priceNames_d))
+tab_p_melt_d <- melt(setDT(tab_p_d), id = "share")
+tab_p_melt_d <- tab_p_melt_d[tab_p_melt_d$share != tab_p_melt_d$variable,]
+tab_p_melt_d$value[tab_p_melt_d$value < 0.05] <- '*'
+tab_p_melt_d$value[tab_p_melt_d$value >= 0.05] <- ''
+
+# table - labels
+tab_pe_melt_d$label <- paste(as.character(format(tab_pe_melt_d$value, nsmall=2)), '\n', '(', as.character(format(tab_se_melt_d$value, nsmall=2)), ')', tab_p_melt_d$value, sep = '')
+
+tab_all_a$SES <- "High"
+tab_all_b$SES <- "High"
+tab_all_c$SES <- "High"
+tab_all_d$SES <- "How"
+
+
+# combine major and minor own-price elasticity results
+tab_all_2 <- rbind(tab_combined[tab_combined$SES=="High",], 
+                 tab_all_a,
+                 tab_all_b,
+                 tab_all_c,
+                 tab_all_d) 
+
+
+# set order
+tab_all_2$order <- ''
+tab_all_2$order <-  ifelse(tab_all_2$category == "Vegetables", 10, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fruit", 20, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Meat and alternatives", 30, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Red meat", 31, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Poultry", 32, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Processed meat", 33, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fish and seafoods", 34, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Eggs", 35, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Nuts and seeds", 36, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Legumes/beans", 37, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Grains", 40, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Bread", 41, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Breakfast cereals", 42, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Pasta, rice, and other cereals", 43, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Dairy products and alternatives", 50, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Milk", 51, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Yoghurt", 52, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cheese and cream", 53, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ice-cream", 54, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits, cakes, and desserts", 60, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Biscuits", 61, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Cakes, muffins, and pastries", 62, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Desserts", 63, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Confectionery and snacks", 70, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Chocolate-based confectionery", 71, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-based confectionery", 72, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Snackfoods", 73, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-alcoholic beverages", 80, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugar-sweetened beverages", 81, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Non-sugar sweetened beverages", 82, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Tea and coffee", 83, tab_all_2$order)
+
+tab_all_2$order <-  ifelse(tab_all_2$category == "Other", 90, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Fats and oils", 91, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sugars, honey, and related products", 92, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Sauces, dressings, spreads, and dips", 93, tab_all_2$order)
+tab_all_2$order <-  ifelse(tab_all_2$category == "Ready meals", 94, tab_all_2$order)
+
+
+tab_all_2$order <- as.numeric(tab_all_2$order)
+tab_all_2 <- arrange(tab_all_2, order)
+tab_all_OPE_high <- tab_all_2[c("category", "label", "order")]
+
+tog <- merge(merge(tab_all_OPE_low,tab_all_OPE_middle,by="category"), tab_all_OPE_high, by= "category")
+
+tog <- arrange(tog, order)
+
+
+
+
+write_xlsx(tog, "sup_table_2.xlsx")
+```
+
+# LAST FIGURE
+```{r last1}
+
+
+exp <- as.data.frame(read_excel("exp_price.xlsx"))
+names(exp) <- c("index","COLUMN","SHARE_MEAN_ALL","SHARE_STD_ALL","PRICE_MEAN_ALL","PRICE_STD_ALL" )
+exp$"SHARE_MEAN_ALL" <- 100*exp$"SHARE_MEAN_ALL"
+exp$"SHARE_STD_ALL" <- 100*exp$"SHARE_STD_ALL"
+exp$order <- seq(1,36)
+exp$COLUMN <-  gsub(' SHARE', ' ', exp$COLUMN)
+exp$COLUMN <- substr(exp$COLUMN, 1, nchar(exp$COLUMN) - 1)
+exp$LABEL <-  paste(as.character(format(round(exp$SHARE_MEAN_ALL, 1), nsmall=1)), ' (', as.character(format(round(exp$SHARE_STD_ALL, 1), nsmall=1)), ')', sep = '')
+exp$mini <- exp$SHARE_MEAN_ALL - exp$SHARE_STD_ALL
+exp$mini <- ifelse(exp$mini < 0, 0, exp$mini)
+exp$maxi <- exp$SHARE_MEAN_ALL + exp$SHARE_STD_ALL
+
+blank11 <- data.frame(index = "x", COLUMN = "x1", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 1.5, LABEL = "x", mini = NA, maxi = NA)
+blank12 <- data.frame(index = "x", COLUMN = "x2", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 2.5, LABEL = "x", mini = NA, maxi = NA)
+blank13 <- data.frame(index = "x", COLUMN = "x3", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 10.5, LABEL = "x", mini = NA, maxi = NA)
+blank14 <- data.frame(index = "x", COLUMN = "x4", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 14.5, LABEL = "x", mini = NA, maxi = NA)
+blank15 <- data.frame(index = "x", COLUMN = "x5", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 19.5, LABEL = "x", mini = NA, maxi = NA)
+blank16 <- data.frame(index = "x", COLUMN = "x6", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 23.5, LABEL = "x", mini = NA, maxi = NA)
+blank17 <- data.frame(index = "x", COLUMN = "x7", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 27.5, LABEL = "x", mini = NA, maxi = NA)
+blank18 <- data.frame(index = "x", COLUMN = "x8", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = "x", PRICE_STD_ALL = "x", order = 31.5, LABEL = "x", mini = NA, maxi = NA)
+
+
+exp <- rbind(exp,
+             blank11,
+             blank12,
+             blank13,
+             blank14,
+             blank15,
+             blank16,
+             blank17,
+             blank18) 
+
+
+exp$Level <- "steelblue1"
+exp$Level <-  ifelse(exp$COLUMN == "Vegetables", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Fruit", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Grains", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Meat and alternatives", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Dairy products and alternatives", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Non-alcoholic beverages", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Confectionery and snacks", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Biscuits, cakes, and desserts", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Other", "steelblue", exp$Level)
+
+
+ggplot(exp, aes(x = SHARE_MEAN_ALL, y = reorder(COLUMN, -order), fill = Level)) + geom_col() +  
+  labs(y = '', x = 'Mean Expenditure Share, %', fontsize = 40)+ 
+  theme_bw() + 
+  xlim(0, 40) + 
+  scale_y_discrete(labels = c("Vegetables" = expression(bold("Vegetables")), 
+                                 "Fruit" = expression(bold("Fruit")),
+                                 "Grains" = expression(bold("Grains")),
+                                 "Meat and alternatives" = expression(bold("Meat and alternatives")),
+                                 "Dairy products and alternatives" = expression(bold("Dairy products and alternatives")),
+                                 "Non-alcoholic beverages" = expression(bold("Non-alcoholic beverages")),
+                                 "Confectionery and snacks" = expression(bold("Confectionery and snacks")),
+                                 "Biscuits, cakes, and desserts" = expression(bold("Biscuits, cakes, and desserts")),
+                                 "Other" = expression(bold("Other"))
+                                 ), breaks = all_cats) + geom_text(aes(x = maxi, label=LABEL, nsmall = 2), position=position_dodge(width=0.9), hjust = -0.1, size=3.4) + 
+  geom_errorbar(aes(xmin = mini, xmax = maxi), width = 0.2)+
+  scale_fill_manual(values = c("steelblue", "steelblue1"), labels = c("Major category", "Minor category"))
+
+ggsave("exp_fig.png", width = 8.5, height = 8)
+
+
+
+
+```
+
+
+```{r last2}
+
+
+exp <- as.data.frame(read_excel("exp_price.xlsx"))
+names(exp) <- c("index","COLUMN","SHARE_MEAN_ALL","SHARE_STD_ALL","PRICE_MEAN_ALL","PRICE_STD_ALL" )
+exp$order <- seq(1,36)
+exp$COLUMN <-  gsub(' SHARE', ' ', exp$COLUMN)
+exp$COLUMN <- substr(exp$COLUMN, 1, nchar(exp$COLUMN) - 1)
+exp$LABEL <-  paste(as.character(format(round(exp$PRICE_MEAN_ALL, 2), nsmall=2)), ' (', gsub(" ", "", as.character(format(round(exp$PRICE_STD_ALL, 2), nsmall=2))), ')', sep = '')
+exp$mini <- exp$PRICE_MEAN_ALL - exp$PRICE_STD_ALL
+exp$mini <- ifelse(exp$mini < 0, 0, exp$mini)
+exp$maxi <- exp$PRICE_MEAN_ALL + exp$PRICE_STD_ALL
+
+
+
+blank11 <- data.frame(index = "x", COLUMN = "x1", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 1.5, LABEL = "x", mini = NA, maxi = NA)
+blank12 <- data.frame(index = "x", COLUMN = "x2", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 2.5, LABEL = "x", mini = NA, maxi = NA)
+blank13 <- data.frame(index = "x", COLUMN = "x3", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 10.5, LABEL = "x", mini = NA, maxi = NA)
+blank14 <- data.frame(index = "x", COLUMN = "x4", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 14.5, LABEL = "x", mini = NA, maxi = NA)
+blank15 <- data.frame(index = "x", COLUMN = "x5", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 19.5, LABEL = "x", mini = NA, maxi = NA)
+blank16 <- data.frame(index = "x", COLUMN = "x6", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 23.5, LABEL = "x", mini = NA, maxi = NA)
+blank17 <- data.frame(index = "x", COLUMN = "x7", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 27.5, LABEL = "x", mini = NA, maxi = NA)
+blank18 <- data.frame(index = "x", COLUMN = "x8", SHARE_MEAN_ALL = NA, SHARE_STD_ALL = "x", PRICE_MEAN_ALL = NA, PRICE_STD_ALL = "x", order = 31.5, LABEL = "x", mini = NA, maxi = NA)
+
+
+
+
+exp <- rbind(exp,
+             blank11,
+             blank12,
+             blank13,
+             blank14,
+             blank15,
+             blank16,
+             blank17,
+             blank18) 
+
+
+exp$Level <- "steelblue1"
+exp$Level <-  ifelse(exp$COLUMN == "Vegetables", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Fruit", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Grains", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Meat and alternatives", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Dairy products and alternatives", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Non-alcoholic beverages", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Confectionery and snacks", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Biscuits, cakes, and desserts", "steelblue", exp$Level)
+exp$Level <-  ifelse(exp$COLUMN == "Other", "steelblue", exp$Level)
+
+
+
+ggplot(exp, aes(x = PRICE_MEAN_ALL, y = reorder(COLUMN, -order), fill = Level)) + geom_col() +  
+  labs(y = '', x = 'Mean Price Paid, $/kg or $/L', fontsize = 40)+ 
+  theme_bw() + 
+  xlim(0, 55) + 
+  scale_y_discrete(labels = c("Vegetables" = expression(bold("Vegetables")), 
+                                 "Fruit" = expression(bold("Fruit")),
+                                 "Grains" = expression(bold("Grains")),
+                                 "Meat and alternatives" = expression(bold("Meat and alternatives")),
+                                 "Dairy products and alternatives" = expression(bold("Dairy products and alternatives")),
+                                 "Non-alcoholic beverages" = expression(bold("Non-alcoholic beverages")),
+                                 "Confectionery and snacks" = expression(bold("Confectionery and snacks")),
+                                 "Biscuits, cakes, and desserts" = expression(bold("Biscuits, cakes, and desserts")),
+                                 "Other" = expression(bold("Other"))
+                                 ), breaks = all_cats)  + 
+  geom_errorbar(aes(xmin = mini, xmax = maxi), width = 0.2) +
+  geom_text(aes(x = maxi, label=LABEL, nsmall = 2), position=position_dodge(width=0.9), hjust = -0.1, size=3.4) +
+  scale_fill_manual(values = c("steelblue", "steelblue1"), labels = c("Major category", "Minor category"))
+
+
+ggsave("price_fig.png", width = 9, height = 8)
+
+
+
+
+
+#for (col_name in priceNames) {
+  # Calculate the mean of the current column
+ # mean_value <- mean(df_all[[col_name]])
+  
+  # Normalize the current column by dividing each value by its mean
+#  df_all[[col_name]] <- df_all[[col_name]] / mean_value
+#}
+
+
+
+#for (col_name in priceNames) {
+#  # Calculate the mean of the current column
+#  df_all$col_name <- df_all$col_name / mean(df_all$col_name)
+
+#}
+
+
+#df_all$"Biscuits, cakes, and desserts PRICE" <- df_all$"Biscuits, cakes, and desserts PRICE"/mean(df_all$"Biscuits, cakes, and desserts PRICE")
+
+#df_all <- df_all %>%
+#  mutate_at(vars(priceNames), ~ (scale(.) * 50) + 50)
+
+
+
+#df_all <- df_all %>%
+#  mutate_at(vars(priceNames), list(~ ./2))
+
+#df_all <-sweep(df_all[priceNames], 2, colMeans(df_all[priceNames]), "/")
+
+
+#df_all %>%
+#  mutate_at(vars(priceNames), funs(./mean(.)))
+
+#df_all[priceNames] <- df_all[priceNames] / colMeans(df_all[priceNames])
+
+
+```
+
+
